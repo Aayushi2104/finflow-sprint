@@ -1,0 +1,56 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: gateway-service
+
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+
+      routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/gateway/auth/**
+          filters:
+            - StripPrefix=1
+
+        - id: application-service
+          uri: lb://application-service
+          predicates:
+            - Path=/gateway/applications/**
+          filters:
+            - StripPrefix=1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+jwt:
+  secret: "your-jwt-secret"
+
+gateway:
+  security:
+    public-endpoints:
+      - /gateway/auth/signup
+      - /gateway/auth/login
