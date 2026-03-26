@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.security.Key;
 
 @Component
-public class JwtUtil implements TokenClaimsService {
+public class JwtUtil {
 
     @Value("${jwt.secret}")
     private String secret;
@@ -27,12 +27,6 @@ public class JwtUtil implements TokenClaimsService {
         return getClaims(token).get("role",String.class);
     }
 
-    @Override
-    public TokenClaims extractClaims(String token) {
-        return new TokenClaims(extractEmail(token), extractRole(token));
-    }
-
-    @Override
     public boolean isTokenValid(String token){
         try{
             getClaims(token);
