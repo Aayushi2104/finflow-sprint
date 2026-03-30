@@ -15,28 +15,29 @@ import java.io.IOException;
 import java.util.List;
 
 @RestController
-@RequestMapping({"/documents"})
+@RequestMapping("/documents")
 @RequiredArgsConstructor
 public class DocumentController {
 
     private final DocumentService documentService;
 
-
+    // Applicant: Upload Document
     @PostMapping("/upload")
     @PreAuthorize("hasRole('APPLICANT')")
     public ResponseEntity<DocumentResponse> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("applicationId") Long applicationId,
             @RequestParam("documentType") DocumentType documentType,
+            @RequestHeader("Authorization") String authToken,
             Authentication auth) throws IOException {
 
         return ResponseEntity.ok(
                 documentService.uploadDocument(
-                        file, applicationId, documentType, auth.getName())
+                        file, applicationId, documentType, auth.getName(), authToken)
         );
     }
 
-
+    // Applicant: Get My Documents
     @GetMapping("/my")
     @PreAuthorize("hasRole('APPLICANT')")
     public ResponseEntity<List<DocumentResponse>> getMyDocuments(
@@ -46,7 +47,7 @@ public class DocumentController {
         );
     }
 
-
+    // Applicant: Get Documents by Application
     @GetMapping("/application/{applicationId}")
     @PreAuthorize("hasRole('APPLICANT')")
     public ResponseEntity<List<DocumentResponse>> getByApplication(
@@ -58,7 +59,7 @@ public class DocumentController {
         );
     }
 
-
+    // Admin: Get Pending Documents
     @GetMapping("/admin/pending")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<DocumentResponse>> getPending() {
@@ -67,15 +68,16 @@ public class DocumentController {
         );
     }
 
-
+    // Admin: Verify Document
     @PutMapping("/admin/{id}/verify")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DocumentResponse> verify(
             @PathVariable Long id,
             @Valid @RequestBody VerifyRequest request,
+            @RequestHeader("Authorization") String authToken,
             Authentication auth) {
         return ResponseEntity.ok(
-                documentService.verifyDocument(id, request, auth.getName())
+                documentService.verifyDocument(id, request, auth.getName(), authToken)
         );
     }
 }

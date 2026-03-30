@@ -13,7 +13,8 @@ public interface DocumentService {
     DocumentResponse uploadDocument(MultipartFile file,
                                     Long applicationId,
                                     DocumentType documentType,
-                                    String email) throws IOException;
+                                    String email,
+                                    String authToken) throws IOException;
 
     List<DocumentResponse> getMyDocuments(String email);
 
@@ -21,5 +22,8 @@ public interface DocumentService {
 
     List<DocumentResponse> getPendingDocuments();
 
-    DocumentResponse verifyDocument(Long documentId, VerifyRequest request, String adminEmail);
+    DocumentResponse verifyDocument(Long documentId,
+                                    VerifyRequest request,
+                                    String adminEmail,
+                                    String authToken);
 }

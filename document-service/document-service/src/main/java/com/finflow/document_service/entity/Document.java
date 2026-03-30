@@ -25,17 +25,21 @@ public class Document {
     private String applicantEmail;
 @Column(nullable = false)
     private String fileName;
-@Column(nullable = false)
-    private String storedFileName;
-@Column(nullable = false)
-    private String filePath;
+
 @Column(nullable = false)
     private String fileType;
     private Long fileSize;
+    private String storedFileName;
+    private String filePath;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private DocumentType documentType;
+
+
+    private String cloudinaryPublicId;
+    private String cloudinaryUrl;
+
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

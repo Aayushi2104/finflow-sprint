@@ -1,28 +1,24 @@
 package com.finflow.document_service.service;
 
+import com.finflow.document_service.config.RabbitConfig;
+import com.finflow.document_service.dto.ApplicationStatusUpdateEvent;
+import com.finflow.document_service.dto.CloudinaryResponse;
 import com.finflow.document_service.dto.DocumentResponse;
 import com.finflow.document_service.dto.VerifyRequest;
 import com.finflow.document_service.entity.Document;
+import com.finflow.document_service.entity.Document.DocumentStatus;
 import com.finflow.document_service.entity.Document.DocumentType;
 import com.finflow.document_service.exception.ApiException;
 import com.finflow.document_service.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -30,50 +26,40 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DocumentServiceImpl implements DocumentService {
 
-    private static final Set<String> ALLOWED_EXTENSIONS =
-            Set.of("pdf", "jpg", "jpeg", "png");
-
     private final DocumentRepository documentRepository;
-    private final ModelMapper modelMapper;
-
-    @Value("${file.upload-dir}")
-    private String uploadDir;
+    private final CloudinaryService cloudinaryService;
+    private final ApplicationStatusEventPublisher applicationStatusEventPublisher;
 
     @Override
     public DocumentResponse uploadDocument(MultipartFile file,
                                            Long applicationId,
                                            DocumentType documentType,
-                                           String email) throws IOException {
-        String extension = validateAndExtractExtension(file);
-        String originalFileName = file.getOriginalFilename();
-        Path uploadPath = Paths.get(uploadDir);
+                                           String email,
+                                           String authToken) throws IOException {
+        CloudinaryResponse cloudinaryResponse =
+                cloudinaryService.uploadFile(file, email + "/" + applicationId);
+        String fileType = cloudinaryResponse.getFormat();
 
-        if (!Files.exists(uploadPath)) {
-            Files.createDirectories(uploadPath);
+        if (fileType == null || fileType.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Unable to determine uploaded file type");
         }
-
-        String storedFileName = UUID.randomUUID() + "." + extension;
-        Path filePath = uploadPath.resolve(storedFileName);
-
-        Files.copy(
-                file.getInputStream(),
-                filePath,
-                StandardCopyOption.REPLACE_EXISTING
-        );
-        log.info("File saved: {}", filePath);
 
         Document document = Document.builder()
                 .applicationId(applicationId)
                 .applicantEmail(email)
-                .fileName(originalFileName)
-                .storedFileName(storedFileName)
-                .filePath(filePath.toString())
-                .fileType(extension.toUpperCase())
-                .fileSize(file.getSize())
+                .fileName(cloudinaryResponse.getOriginalFileName())
+                .storedFileName(cloudinaryResponse.getPublicId())
+                .filePath(cloudinaryResponse.getSecureUrl())
+                .cloudinaryPublicId(cloudinaryResponse.getPublicId())
+                .cloudinaryUrl(cloudinaryResponse.getSecureUrl())
+                .fileType(fileType.toUpperCase())
+                .fileSize(cloudinaryResponse.getFileSize())
                 .documentType(documentType)
                 .build();
 
-        return toResponse(documentRepository.save(document));
+        DocumentResponse response = toResponse(documentRepository.save(document));
+        updateApplicationStatus(applicationId, "DOCS_PENDING");
+        return response;
     }
 
     @Override
@@ -97,7 +83,7 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     public List<DocumentResponse> getPendingDocuments() {
         return documentRepository
-                .findByStatus(Document.DocumentStatus.PENDING)
+                .findByStatus(DocumentStatus.PENDING)
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
@@ -106,7 +92,8 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     public DocumentResponse verifyDocument(Long documentId,
                                            VerifyRequest request,
-                                           String adminEmail) {
+                                           String adminEmail,
+                                           String authToken) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.NOT_FOUND,
@@ -117,34 +104,46 @@ public class DocumentServiceImpl implements DocumentService {
         document.setVerifiedBy(adminEmail);
         document.setVerifiedAt(LocalDateTime.now());
 
-        return toResponse(documentRepository.save(document));
+        DocumentResponse response = toResponse(documentRepository.save(document));
+
+        Long applicationId = document.getApplicationId();
+        List<Document> allDocs = documentRepository.findByApplicationId(applicationId);
+
+        boolean allVerified = allDocs.stream()
+                .allMatch(doc -> doc.getStatus() == DocumentStatus.VERIFIED);
+        boolean anyRejected = allDocs.stream()
+                .anyMatch(doc -> doc.getStatus() == DocumentStatus.REJECTED);
+
+        if (anyRejected) {
+            updateApplicationStatus(applicationId, "DOCS_PENDING");
+            log.info("Document rejected. Application {} moved to DOCS_PENDING", applicationId);
+        } else if (allVerified) {
+            updateApplicationStatus(applicationId, "DOCS_VERIFIED");
+            log.info("All documents verified. Application {} moved to DOCS_VERIFIED", applicationId);
+        }
+
+        return response;
     }
 
-    private String validateAndExtractExtension(MultipartFile file) {
-        if (file.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "File is empty");
-        }
-
-        String originalFileName = file.getOriginalFilename();
-        if (originalFileName == null || !originalFileName.contains(".")) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid file name");
-        }
-
-        String extension =
-                originalFileName.substring(originalFileName.lastIndexOf('.') + 1)
-                        .toLowerCase();
-
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
-            throw new ApiException(
-                    HttpStatus.BAD_REQUEST,
-                    "File type not allowed. Only PDF, JPG, PNG allowed"
-            );
-        }
-
-        return extension;
+    private void updateApplicationStatus(Long applicationId, String status) {
+        applicationStatusEventPublisher.publishStatusUpdate(applicationId, status);
     }
 
     private DocumentResponse toResponse(Document document) {
-        return modelMapper.map(document, DocumentResponse.class);
+        return DocumentResponse.builder()
+                .id(document.getId())
+                .applicationId(document.getApplicationId())
+                .applicantEmail(document.getApplicantEmail())
+                .fileName(document.getFileName())
+                .cloudinaryUrl(document.getCloudinaryUrl())
+                .fileType(document.getFileType())
+                .fileSize(document.getFileSize())
+                .documentType(document.getDocumentType())
+                .status(document.getStatus())
+                .verifiedBy(document.getVerifiedBy())
+                .remarks(document.getRemarks())
+                .uploadedAt(document.getUploadedAt())
+                .verifiedAt(document.getVerifiedAt())
+                .build();
     }
 }
