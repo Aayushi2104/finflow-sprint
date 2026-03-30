@@ -80,7 +80,7 @@ public class ApplicationController {
     }
 
     @PutMapping("/admin/{id}/status")
-    @PreAuthorize("hasRole('ADMIN')")
+
     public ResponseEntity<ApplicationResponse> updateStatus(
             @PathVariable Long id,
             @RequestParam ApplicationStatus status) {
