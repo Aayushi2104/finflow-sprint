@@ -1,16 +1,14 @@
 package com.finflow.auth_service.controller;
 
-import com.finflow.auth_service.dto.AuthResposne;
-import com.finflow.auth_service.dto.LoginRequest;
-import com.finflow.auth_service.dto.SignUpRequest;
+import com.finflow.auth_service.dto.*;
 import com.finflow.auth_service.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/auth")
@@ -26,5 +24,24 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResposne>login(@Valid @RequestBody LoginRequest request){
         return ResponseEntity.ok(authService.login(request));
+    }
+    @PostMapping("/create-admin")
+    public ResponseEntity<AuthResposne> createAdmin(
+            @Valid @RequestBody SignUpRequest request) {
+        return ResponseEntity.ok(authService.createAdmin(request));
+    }
+
+    @GetMapping("/admin/users")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<UserResponse>> getAllUsers() {
+        return ResponseEntity.ok(authService.getAllUsers());
+    }
+
+    @PutMapping("/admin/users/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponse> updateUser(
+            @PathVariable Long id,
+            @RequestBody UpdateUserRequest request) {
+        return ResponseEntity.ok(authService.updateUser(id, request));
     }
 }
