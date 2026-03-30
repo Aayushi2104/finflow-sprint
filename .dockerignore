@@ -1,0 +1,10 @@
+*
+!Dockerfile.runtime
+!docker-compose.yml
+!auth-service/auth-service/target/*.jar
+!application-service/application-service/target/*.jar
+!document-service/document-service/target/*.jar
+!admin-service/admin-service/target/*.jar
+!config-service/config-service/target/*.jar
+!eureka-server/eureka-server/target/*.jar
+!gateway-service/gateway-service/target/*.jar

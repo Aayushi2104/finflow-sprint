@@ -1,6 +1,6 @@
 package com.finflow.gateway_service.filter;
 
-import com.finflow.gateway_service.config.GatewaySecurityProperties;
+import com.finflow.gateway_service.config.PublicEndpointMatcher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -13,15 +13,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.util.List;
-
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private final JwtUtil jwtUtil;
-    private final GatewaySecurityProperties securityProperties;
+    private final PublicEndpointMatcher publicEndpointMatcher;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange,
@@ -33,7 +31,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         log.info("Incoming request: {}", path);
 
 
-        if (isPublicEndpoint(path)) {
+        if (publicEndpointMatcher.isPublic(path)) {
             return chain.filter(exchange);
         }
 
@@ -57,7 +55,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
 
         String email = jwtUtil.extractEmail(token);
-        String role  = jwtUtil.extractRole(token);
+        String role = jwtUtil.extractRole(token);
 
         log.info("Authenticated: {} | Role: {}", email, role);
 
@@ -68,19 +66,6 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
         return chain.filter(exchange.mutate()
                 .request(modifiedRequest).build());
-    }
-
-    private boolean isPublicEndpoint(String path) {
-        return securityProperties.getPublicEndpoints().stream()
-                .anyMatch(endpoint -> matchesPublicEndpoint(path, endpoint));
-    }
-
-    private boolean matchesPublicEndpoint(String path, String endpoint) {
-        if (endpoint.endsWith("/**")) {
-            String prefix = endpoint.substring(0, endpoint.length() - 3);
-            return path.startsWith(prefix);
-        }
-        return path.equals(endpoint);
     }
 
     private Mono<Void> sendUnauthorized(ServerWebExchange exchange,

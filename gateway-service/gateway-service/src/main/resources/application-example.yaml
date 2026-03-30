@@ -38,6 +38,19 @@ spring:
             - Path=/gateway/applications/**
           filters:
             - StripPrefix=1
+        - id: document-service
+          uri: lb://document-service
+          predicates:
+            - Path=/gateway/documents/**
+          filters:
+            - StripPrefix=1
+
+        - id: admin-service
+          uri: lb://admin-service
+          predicates:
+            - Path=/gateway/admin/**
+          filters:
+            - StripPrefix=1
 
 eureka:
   client:
