@@ -1,0 +1,217 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: finflow-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    mem_limit: 512m
+    cpus: 1.0
+
+  zipkin:
+    image: openzipkin/zipkin:3.5
+    container_name: finflow-zipkin
+    ports:
+      - "9411:9411"
+    mem_limit: 384m
+    cpus: 1.0
+
+  mysql:
+    image: mysql:8.4
+    container_name: finflow-mysql
+    profiles: ["with-mysql"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker-data/mysql:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    mem_limit: 1g
+    cpus: 1.5
+
+  config-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        JAR_FILE: config-service/config-service/target/*.jar
+    container_name: finflow-config-service
+    environment:
+      CONFIG_GIT_URI: ${CONFIG_GIT_URI}
+      CONFIG_GIT_BRANCH: ${CONFIG_GIT_BRANCH:-main}
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8888:8888"
+    depends_on:
+      - zipkin
+    mem_limit: 384m
+    cpus: 1.0
+
+  eureka-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        JAR_FILE: eureka-server/eureka-server/target/*.jar
+    container_name: finflow-eureka-server
+    environment:
+      SPRING_CONFIG_IMPORT: configserver:http://config-service:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8761:8761"
+    depends_on:
+      - config-service
+    mem_limit: 384m
+    cpus: 1.0
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        JAR_FILE: auth-service/auth-service/target/*.jar
+    container_name: finflow-auth-service
+    environment:
+      SPRING_CONFIG_IMPORT: configserver:http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      AUTH_DB_URL: ${AUTH_DB_URL_DOCKER:-jdbc:mysql://host.docker.internal:3306/finflow_auth_db?createDatabaseIfNotExist=true}
+      AUTH_DB_USERNAME: ${AUTH_DB_USERNAME}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8081:8081"
+    depends_on:
+      - config-service
+      - eureka-server
+      - rabbitmq
+    mem_limit: 512m
+    cpus: 1.0
+
+  application-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        JAR_FILE: application-service/application-service/target/*.jar
+    container_name: finflow-application-service
+    environment:
+      SPRING_CONFIG_IMPORT: configserver:http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      APPLICATION_DB_URL: ${APPLICATION_DB_URL_DOCKER:-jdbc:mysql://host.docker.internal:3306/finflow_app_db?createDatabaseIfNotExist=true}
+      APPLICATION_DB_USERNAME: ${APPLICATION_DB_USERNAME}
+      APPLICATION_DB_PASSWORD: ${APPLICATION_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8082:8082"
+    depends_on:
+      - config-service
+      - eureka-server
+      - rabbitmq
+    mem_limit: 512m
+    cpus: 1.0
+
+  document-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        JAR_FILE: document-service/document-service/target/*.jar
+    container_name: finflow-document-service
+    environment:
+      SPRING_CONFIG_IMPORT: configserver:http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      DOCUMENT_DB_URL: ${DOCUMENT_DB_URL_DOCKER:-jdbc:mysql://host.docker.internal:3306/finflow_doc_db?createDatabaseIfNotExist=true}
+      DOCUMENT_DB_USERNAME: ${DOCUMENT_DB_USERNAME}
+      DOCUMENT_DB_PASSWORD: ${DOCUMENT_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      FILE_UPLOAD_DIR: /data/uploads
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./docker-data/uploads:/data/uploads
+    depends_on:
+      - config-service
+      - eureka-server
+      - rabbitmq
+    mem_limit: 512m
+    cpus: 1.0
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        JAR_FILE: admin-service/admin-service/target/*.jar
+    container_name: finflow-admin-service
+    environment:
+      SPRING_CONFIG_IMPORT: configserver:http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ADMIN_DB_URL: ${ADMIN_DB_URL_DOCKER:-jdbc:mysql://host.docker.internal:3306/finflow_admin_db?createDatabaseIfNotExist=true}
+      ADMIN_DB_USERNAME: ${ADMIN_DB_USERNAME}
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      SERVICES_APPLICATION_SERVICE_URL: http://application-service:8082
+      SERVICES_AUTH_SERVICE_URL: http://auth-service:8081
+    ports:
+      - "8086:8086"
+    depends_on:
+      - config-service
+      - eureka-server
+      - auth-service
+      - application-service
+      - rabbitmq
+    mem_limit: 512m
+    cpus: 1.0
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        JAR_FILE: gateway-service/gateway-service/target/*.jar
+    container_name: finflow-gateway-service
+    environment:
+      SPRING_CONFIG_IMPORT: configserver:http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8083:8083"
+    depends_on:
+      - config-service
+      - eureka-server
+      - auth-service
+      - application-service
+      - document-service
+      - admin-service
+    mem_limit: 512m
+    cpus: 1.0
